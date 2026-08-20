@@ -155,19 +155,13 @@ HTML_CONTENT = """
 
             submitBtn.disabled = true; btnText.style.display = 'none'; spinner.style.display = 'block';
             try {
-                const response = flexibleFetch('/download', {
+                const response = await fetch('/download', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url: urlInput })
                 });
-                // Using standard fetch call below
-                const res = await fetch('/download', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: urlInput })
-                });
-                const data = await res.json();
-                if (res.ok && data.success && data.download_url) {
+                const data = await response.json();
+                if (response.ok && data.success && data.download_url) {
                     downloadAnchor.href = data.download_url;
                     resultBox.style.display = 'block';
                 } else {
@@ -197,8 +191,9 @@ class DownloadRequest(BaseModel):
 async def download_video(request: DownloadRequest):
     raw_cookies = """PREF=tz=UTC&f7=100; APISID=6hdF0Bpg7M_uJrfS/A4slgWvGs5QZxbZwW; SAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; __Secure-1PAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; __Secure-3PAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; SID=g.a000BglsyntdQVONunOqZWLPwfGj5UjFYxeRo7KhhznMkPFKX8jH3eqnElfZDTIdTUGsxiH2gACgYKAXQSARUSFQHGX2Mi-hNHNbOcVCUS2F6q1-nX5hoVAUF8yKoHjfqIFlKUqyl7vSytjLgv0076; CONSISTENCY=AHDYFaFwU-SaW_ZQTuVxwSyvvf4NCeule6bxX7rvJDGmr-IOmtm_Cvqj7hHPEDLLrteSggn-lcrpuLhqWsSCOZ0GhzDZQi9t_9leijz6kH7aL6ZGWxU7HE5ojIMqPwqANcXfc7A2ASajdfkG7O3Y3qp5GUOawjHrW1nwyMZ9OmVHG; SIDCC=AKEYXzXWmqp6XZydc8WzSvz6-EVey9QjrdNEQzfzhbxySU0ePRE7L0Rm4oek3CFQngK-o-Zgd0"""
 
+    # Universal robust options to handle both videos and shorts without throwing format errors
     ydl_opts = {
-        'format': 'best',
+        'format': 'best/bestvideo+bestaudio/best',
         'noplaylist': True,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -210,47 +205,23 @@ async def download_video(request: DownloadRequest):
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # First try extracting info normally
             info = ydl.extract_info(request.url, download=False)
             
+            # Universal URL extraction fallback sequence
             download_url = info.get('url')
-            
-            # Agar direct url na mile toh formats mein se best utha lo
+            if not download_url and 'requested_formats' in info and len(info['requested_formats']) > 0:
+                download_url = info['requested_formats'][0].get('url')
             if not download_url and 'formats' in info:
-                formats = info.get('formats', [])
-                # Sab se pehle aisi format dekhein jisme video aur audio dono hon
-                for f in formats:
-                    if f.get('url') and f.get('vcodec') != 'none' and f.get('acodec') != 'none':
+                for f in reversed(info.get('formats', [])):
+                    if f.get('url'):
                         download_url = f.get('url')
                         break
-                # Agar wo na mile toh koi bhi available working url utha lo
-                if not download_url:
-                    for f in reversed(formats):
-                        if f.get('url'):
-                            download_url = f.get('url')
-                            break
-                            
+                        
             if not download_url:
                 raise Exception("Could not extract direct download link.")
                 
             return {"success": True, "download_url": download_url}
     except Exception as e:
-        # Fallback: agar pehle tarike mein error aaye toh format ko 'bv*+ba/b' par try karein ya generic error dein
-        try:
-            ydl_opts_fallback = {
-                'format': 'bv*+ba/b',
-                'noplaylist': True,
-                'http_headers': ydl_opts['http_headers']
-            }
-            with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl2:
-                info2 = ydl2.extract_info(request.url, download=False)
-                dl_url = info2.get('url')
-                if not dl_url and 'url' in info2.get('requested_formats', [{}])[0]:
-                    dl_url = info2['requested_formats'][0]['url']
-                if dl_url:
-                    return {"success": True, "download_url": dl_url}
-        except:
-            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
