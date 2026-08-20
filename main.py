@@ -1,4 +1,3 @@
-import os
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +24,7 @@ HTML_CONTENT = """
     <style>
         body { font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .card { background: #1e293b; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 100%; max-width: 450px; text-align: center; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #475569; background: #0f172a; color: #fff; border-radius: 6px; box-sizing: border-box; }
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #475569; background: #0f172a; color: #fff; border-radius: 6px; box-sizing: border-box; }
         button { background: #3b82f6; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; }
         button:hover { background: #2563eb; }
         #result { margin-top: 20px; word-break: break-all; }
@@ -36,8 +35,16 @@ HTML_CONTENT = """
 <body>
     <div class="card">
         <h2>Video Downloader</h2>
-        <p style="color: #94a3b8; font-size: 0.9rem;">Paste YouTube, Instagram, or Facebook URL</p>
+        <p style="color: #94a3b8; font-size: 0.9rem;">Paste YouTube or Instagram URL</p>
         <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=...">
+        
+        <select id="qualitySelect">
+            <option value="best">Best Quality (Auto)</option>
+            <option value="1080">1080p</option>
+            <option value="720">720p</option>
+            <option value="360">360p</option>
+        </select>
+
         <button onclick="processDownload()">Download Video</button>
         <div id="result"></div>
     </div>
@@ -45,7 +52,9 @@ HTML_CONTENT = """
     <script>
         async function processDownload() {
             const url = document.getElementById('urlInput').value.trim();
+            const quality = document.getElementById('qualitySelect').value;
             const resultDiv = document.getElementById('result');
+            
             if (!url) {
                 resultDiv.innerHTML = '<p class="error">Please enter a valid URL</p>';
                 return;
@@ -56,7 +65,7 @@ HTML_CONTENT = """
                 const response = await fetch('/download', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url })
+                    body: JSON.stringify({ url: url, quality: quality })
                 });
                 const data = await response.json();
                 
@@ -84,14 +93,25 @@ async def health_check():
 
 class DownloadRequest(BaseModel):
     url: str
+    quality: str = "best"
 
 @app.post("/download")
 async def download_video(request: DownloadRequest):
     url = request.url
+    quality = request.quality
+    
+    # Format selection logic based on user choice
+    if quality == "best":
+        format_str = 'best'
+    else:
+        format_str = f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best'
+
     ydl_opts = {
-        'format': 'best',
+        'format': format_str,
         'noplaylist': True,
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
