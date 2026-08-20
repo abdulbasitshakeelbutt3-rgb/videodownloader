@@ -215,9 +215,15 @@ HTML_CONTENT = """
 
         .error-msg {
             color: #f87171;
-            font-size: 14px;
+            font-size: 13px;
             margin-top: 15px;
             display: none;
+            word-break: break-all;
+            text-align: left;
+            background: rgba(248, 113, 113, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(248, 113, 113, 0.2);
         }
 
         footer {
@@ -350,13 +356,16 @@ async def download_video(request: DownloadRequest):
         'noplaylist': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios'],
+                'player_client': ['web_creator', 'web']
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.64 Mobile Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
+            'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
         }
     }
     
@@ -378,3 +387,7 @@ async def download_video(request: DownloadRequest):
             return {"success": True, "download_url": download_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
