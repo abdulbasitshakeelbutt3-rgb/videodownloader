@@ -189,17 +189,14 @@ class DownloadRequest(BaseModel):
 
 @app.post("/download")
 async def download_video(request: DownloadRequest):
-    raw_cookies = """PREF=tz=UTC&f7=100; APISID=6hdF0Bpg7M_uJrfS/A4slgWvGs5QZxbZwW; SAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; __Secure-1PAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; __Secure-3PAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; SID=g.a000BglsyntdQVONunOqZWLPwfGj5UjFYxeRo7KhhznMkPFKX8jH3eqnElfZDTIdTUGsxiH2gACgYKAXQSARUSFQHGX2Mi-hNHNbOcVCUS2F6q1-nX5hoVAUF8yKoHjfqIFlKUqyl7vSytjLgv0076; CONSISTENCY=AHDYFaFwU-SaW_ZQTuVxwSyvvf4NCeule6bxX7rvJDGmr-IOmtm_Cvqj7hHPEDLLrteSggn-lcrpuLhqWsSCOZ0GhzDZQi9t_9leijz6kH7aL6ZGWxU7HE5ojIMqPwqANcXfc7A2ASajdfkG7O3Y3qp5GUOawjHrW1nwyMZ9OmVHG; SIDCC=AKEYXzXWmqp6XZydc8WzSvz6-EVey9QjrdNEQzfzhbxySU0ePRE7L0Rm4oek3CFQngK-o-Zgd0"""
-
-    # Universal robust options to handle both videos and shorts without throwing format errors
+    # Using client options to bypass bot detection constraints on server deployments
     ydl_opts = {
         'format': 'best/bestvideo+bestaudio/best',
         'noplaylist': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Cookie': raw_cookies
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['web_safari', 'android']
+            }
         }
     }
     
@@ -207,7 +204,6 @@ async def download_video(request: DownloadRequest):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(request.url, download=False)
             
-            # Universal URL extraction fallback sequence
             download_url = info.get('url')
             if not download_url and 'requested_formats' in info and len(info['requested_formats']) > 0:
                 download_url = info['requested_formats'][0].get('url')
