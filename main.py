@@ -189,7 +189,6 @@ class DownloadRequest(BaseModel):
 
 @app.post("/download")
 async def download_video(request: DownloadRequest):
-    # Jo cookies aapne copy ki hain, woh yahan header mein pass ho rahi hain
     raw_cookies = """PREF=tz=UTC&f7=100; APISID=6hdF0Bpg7M_uJrfS/A4slgWvGs5QZxbZwW; SAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; __Secure-1PAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; __Secure-3PAPISID=auOiMFljUQsQTOhN/ArePB_QfNFCwW2KRD; SID=g.a000BglsyntdQVONunOqZWLPwfGj5UjFYxeRo7KhhznMkPFKX8jH3eqnElfZDTIdTUGsxiH2gACgYKAXQSARUSFQHGX2Mi-hNHNbOcVCUS2F6q1-nX5hoVAUF8yKoHjfqIFlKUqyl7vSytjLgv0076; CONSISTENCY=AHDYFaFwU-SaW_ZQTuVxwSyvvf4NCeule6bxX7rvJDGmr-IOmtm_Cvqj7hHPEDLLrteSggn-lcrpuLhqWsSCOZ0GhzDZQi9t_9leijz6kH7aL6ZGWxU7HE5ojIMqPwqANcXfc7A2ASajdfkG7O3Y3qp5GUOawjHrW1nwyMZ9OmVHG; SIDCC=AKEYXzXWmqp6XZydc8WzSvz6-EVey9QjrdNEQzfzhbxySU0ePRE7L0Rm4oek3CFQngK-o-Zgd0"""
 
     ydl_opts = {
@@ -206,14 +205,26 @@ async def download_video(request: DownloadRequest):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(request.url, download=False)
+            
+            # Direct video URL nikalne ke liye behtar logic
             download_url = info.get('url')
+            if not download_url and 'requested_formats' in info:
+                download_url = info['requested_formats'][0].get('url')
             if not download_url and 'formats' in info:
-                for f in reversed(info.get('formats', [])):
-                    if f.get('url'):
+                for f in info.get('formats', []):
+                    if f.get('url') and f.get('vcodec') != 'none' and f.get('acodec') != 'none':
                         download_url = f.get('url')
                         break
             if not download_url:
+                formats = info.get('formats', [])
+                for f in reversed(formats):
+                    if f.get('url'):
+                        download_url = f.get('url')
+                        break
+                        
+            if not download_url:
                 raise Exception("Could not extract direct download link.")
+                
             return {"success": True, "download_url": download_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
