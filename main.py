@@ -1,6 +1,6 @@
 import os
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import yt_dlp
@@ -15,12 +15,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+HTML_CONTENT = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Video Downloader</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 100%; max-width: 450px; text-align: center; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #475569; background: #0f172a; color: #fff; border-radius: 6px; box-sizing: border-box; }
+        button { background: #3b82f6; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        button:hover { background: #2563eb; }
+        #result { margin-top: 20px; word-break: break-all; }
+        .error { color: #ef4444; }
+        .loading { color: #38bdf8; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Video Downloader</h2>
+        <p style="color: #94a3b8; font-size: 0.9rem;">Paste YouTube, Instagram, or Facebook URL</p>
+        <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=...">
+        <button onclick="processDownload()">Download Video</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function processDownload() {
+            const url = document.getElementById('urlInput').value.trim();
+            const resultDiv = document.getElementById('result');
+            if (!url) {
+                resultDiv.innerHTML = '<p class="error">Please enter a valid URL</p>';
+                return;
+            }
+            resultDiv.innerHTML = '<p class="loading">Processing video, please wait...</p>';
+
+            try {
+                const response = await fetch('/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = `<p style="color: #22c55e;">Success!</p><a href="${data.download_url}" target="_blank"><button>Download File (.mp4)</button></a>`;
+                } else {
+                    resultDiv.innerHTML = `<p class="error">${data.detail || 'Failed to fetch video.'}</p>`;
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `<p class="error">Network error occurred.</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
+"""
+
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
-    file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    return HTMLResponse("<h3>index.html not found</h3>", status_code=404)
+    return HTML_CONTENT
 
 @app.get("/health")
 async def health_check():
@@ -37,13 +93,11 @@ async def download_video(request: DownloadRequest):
         'noplaylist': True,
         'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
     }
-    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if not info:
                 raise HTTPException(status_code=400, detail="Could not extract video details.")
-            
             return {
                 "success": True,
                 "download_url": info.get('url'),
