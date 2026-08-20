@@ -155,13 +155,19 @@ HTML_CONTENT = """
 
             submitBtn.disabled = true; btnText.style.display = 'none'; spinner.style.display = 'block';
             try {
-                const response = await fetch('/download', {
+                const response = flexibleFetch('/download', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url: urlInput })
                 });
-                const data = await response.json();
-                if (response.ok && data.success && data.download_url) {
+                // Using standard fetch call below
+                const res = await fetch('/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: urlInput })
+                });
+                const data = await res.json();
+                if (res.ok && data.success && data.download_url) {
                     downloadAnchor.href = data.download_url;
                     resultBox.style.display = 'block';
                 } else {
@@ -204,29 +210,47 @@ async def download_video(request: DownloadRequest):
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # First try extracting info normally
             info = ydl.extract_info(request.url, download=False)
             
-            # Direct video URL nikalne ke liye behtar logic
             download_url = info.get('url')
-            if not download_url and 'requested_formats' in info:
-                download_url = info['requested_formats'][0].get('url')
+            
+            # Agar direct url na mile toh formats mein se best utha lo
             if not download_url and 'formats' in info:
-                for f in info.get('formats', []):
+                formats = info.get('formats', [])
+                # Sab se pehle aisi format dekhein jisme video aur audio dono hon
+                for f in formats:
                     if f.get('url') and f.get('vcodec') != 'none' and f.get('acodec') != 'none':
                         download_url = f.get('url')
                         break
-            if not download_url:
-                formats = info.get('formats', [])
-                for f in reversed(formats):
-                    if f.get('url'):
-                        download_url = f.get('url')
-                        break
-                        
+                # Agar wo na mile toh koi bhi available working url utha lo
+                if not download_url:
+                    for f in reversed(formats):
+                        if f.get('url'):
+                            download_url = f.get('url')
+                            break
+                            
             if not download_url:
                 raise Exception("Could not extract direct download link.")
                 
             return {"success": True, "download_url": download_url}
     except Exception as e:
+        # Fallback: agar pehle tarike mein error aaye toh format ko 'bv*+ba/b' par try karein ya generic error dein
+        try:
+            ydl_opts_fallback = {
+                'format': 'bv*+ba/b',
+                'noplaylist': True,
+                'http_headers': ydl_opts['http_headers']
+            }
+            with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl2:
+                info2 = ydl2.extract_info(request.url, download=False)
+                dl_url = info2.get('url')
+                if not dl_url and 'url' in info2.get('requested_formats', [{}])[0]:
+                    dl_url = info2['requested_formats'][0]['url']
+                if dl_url:
+                    return {"success": True, "download_url": dl_url}
+        except:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
